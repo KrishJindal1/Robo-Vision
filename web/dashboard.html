@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Robot Doctor</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --text: #1b1f24; --muted: #6b7280; --border: #dfe3e8;
+    --ok: #16a34a; --fault: #dc2626; --warn: #d97706; --unknown: #6b7280;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #14171a; --card: #1e2227; --text: #e6e8eb; --muted: #9aa3ad; --border: #2e353c; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 20px; background: var(--bg); color: var(--text);
+         font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 14px; margin-bottom: 16px; }
+  button { font: inherit; padding: 8px 16px; border-radius: 8px; border: 1px solid var(--border);
+           background: var(--card); color: var(--text); cursor: pointer; margin-right: 8px; }
+  button:hover:not(:disabled) { border-color: var(--muted); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  #state { font-size: 14px; color: var(--muted); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin: 20px 0; }
+  .grid.stale { opacity: 0.45; }
+  .card { background: var(--card); border: 1px solid var(--border); border-left: 6px solid var(--unknown);
+          border-radius: 10px; padding: 12px 14px; }
+  .card.OK { border-left-color: var(--ok); }
+  .card.FAULT { border-left-color: var(--fault); }
+  .card.NOT_FOUND { border-left-color: var(--warn); }
+  .name { font-weight: 600; }
+  .status { font-size: 13px; margin-top: 4px; font-weight: 600; }
+  .OK .status { color: var(--ok); } .FAULT .status { color: var(--fault); } .NOT_FOUND .status { color: var(--warn); }
+  .detail, .value { font-size: 13px; color: var(--muted); margin-top: 2px; }
+  h2 { font-size: 15px; margin: 24px 0 8px; }
+  #log { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px;
+         font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; max-height: 260px; overflow-y: auto; }
+  #log div { padding: 2px 0; }
+  .empty { color: var(--muted); }
+</style>
+</head>
+<body>
+  <h1>Robot Doctor</h1>
+  <div class="sub">Reads the ESP32's reports over USB and shows what is healthy.</div>
+  <button id="connect">Connect to robot</button>
+  <button id="disconnect" disabled>Disconnect</button>
+  <span id="state">Not connected</span>
+  <div id="info" class="sub" style="margin-top:12px"></div>
+
+  <div id="cards" class="grid"><div class="empty">No data yet. Click Connect and choose your ESP32.</div></div>
+
+  <h2>Event log</h2>
+  <div id="log"><div class="empty">Changes will appear here.</div></div>
+
+<script>
+  const cardsEl = document.getElementById("cards");
+  const logEl = document.getElementById("log");
+  const stateEl = document.getElementById("state");
+  const infoEl = document.getElementById("info");
+  const connectBtn = document.getElementById("connect");
+  const disconnectBtn = document.getElementById("disconnect");
+  const lastStatus = {};
+  let dropped = 0;
+  let source = null;
+
+  function addLog(text) {
+    if (logEl.querySelector(".empty")) logEl.innerHTML = "";
+    const row = document.createElement("div");
+    row.textContent = new Date().toLocaleTimeString() + "  " + text;
+    logEl.prepend(row);
+  }
+
+  function renderCards(components) {
+    cardsEl.classList.remove("stale");
+    cardsEl.innerHTML = "";
+    for (const c of components) {
+      const card = document.createElement("div");
+      card.className = "card " + c.status;
+      const name = document.createElement("div"); name.className = "name"; name.textContent = c.id;
+      const st = document.createElement("div"); st.className = "status"; st.textContent = c.status;
+      card.append(name, st);
+      if (c.detail) { const d = document.createElement("div"); d.className = "detail"; d.textContent = c.detail; card.append(d); }
+      if (c.value !== undefined) { const v = document.createElement("div"); v.className = "value"; v.textContent = "value: " + c.value; card.append(v); }
+      cardsEl.append(card);
+    }
+  }
+
+  function handleMessage(m) {
+    if (m.v !== 1) { dropped++; return; }
+    if (m.type === "boot") {
+      infoEl.textContent = "Robot just started. Reset reason: " + m.reset_reason;
+      addLog("BOOT (" + m.reset_reason + ")");
+    } else if (m.type === "status" && Array.isArray(m.components)) {
+      renderCards(m.components);
+      for (const c of m.components) {
+        if (lastStatus[c.id] !== undefined && lastStatus[c.id] !== c.status) {
+          addLog(c.id + ": " + lastStatus[c.id] + " -> " + c.status + (c.detail ? " (" + c.detail + ")" : ""));
+        }
+        lastStatus[c.id] = c.status;
+      }
+    }
+  }
+
+  function handleLine(line) {
+    line = line.trim();
+    if (!line) return;
+    try { handleMessage(JSON.parse(line)); } catch { dropped++; }
+  }
+
+  function connect() {
+    if (source) return;
+    source = new EventSource("/events");
+    source.onopen = () => {
+      stateEl.textContent = "Connected";
+      connectBtn.disabled = true;
+      disconnectBtn.disabled = false;
+      addLog("Connected to bridge");
+    };
+    source.onmessage = (e) => handleLine(JSON.parse(e.data));
+    source.onerror = () => { addLog("Bridge connection lost"); stop(); };
+  }
+
+  function stop() {
+    if (source) source.close();
+    source = null;
+    cardsEl.classList.add("stale");
+    stateEl.textContent = "Disconnected";
+    connectBtn.disabled = false;
+    disconnectBtn.disabled = true;
+  }
+
+  connectBtn.addEventListener("click", connect);
+  disconnectBtn.addEventListener("click", stop);
+</script>
+</body>
+</html>
