@@ -26,14 +26,18 @@
   .grid.stale { opacity: 0.45; }
   .card { background: var(--card); border: 1px solid var(--border); border-left: 6px solid var(--unknown);
           border-radius: 10px; padding: 12px 14px; }
-  .card.OK { border-left-color: var(--ok); }
-  .card.FAULT { border-left-color: var(--fault); }
+  .card.OK, .card.MANUAL_PASS { border-left-color: var(--ok); }
+  .card.FAULT, .card.MANUAL_FAIL { border-left-color: var(--fault); }
   .card.NOT_FOUND { border-left-color: var(--warn); }
   .name { font-weight: 600; }
-  .status { font-size: 13px; margin-top: 4px; font-weight: 600; }
-  .OK .status { color: var(--ok); } .FAULT .status { color: var(--fault); } .NOT_FOUND .status { color: var(--warn); }
+  .status { font-size: 13px; margin-top: 4px; font-weight: 600; color: var(--unknown); }
+  .OK .status, .MANUAL_PASS .status { color: var(--ok); }
+  .FAULT .status, .MANUAL_FAIL .status { color: var(--fault); }
+  .NOT_FOUND .status { color: var(--warn); }
   .detail, .value { font-size: 13px; color: var(--muted); margin-top: 2px; }
   h2 { font-size: 15px; margin: 24px 0 8px; }
+  .panel { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+  #question { display: none; margin-top: 10px; }
   #log { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px;
          font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; max-height: 260px; overflow-y: auto; }
   #log div { padding: 2px 0; }
@@ -48,7 +52,16 @@
   <span id="state">Not connected</span>
   <div id="info" class="sub" style="margin-top:12px"></div>
 
-  <div id="cards" class="grid"><div class="empty">No data yet. Click Connect and choose your ESP32.</div></div>
+  <div id="cards" class="grid"><div class="empty">No data yet. Click Connect.</div></div>
+
+  <h2>Tests</h2>
+  <div class="panel">
+    <button id="ledTest" disabled>Test onboard LED</button>
+    <div id="question">
+      Did the LED blink?
+      <button id="yes">Yes</button><button id="no">No</button>
+    </div>
+  </div>
 
   <h2>Event log</h2>
   <div id="log"><div class="empty">Changes will appear here.</div></div>
@@ -60,6 +73,8 @@
   const infoEl = document.getElementById("info");
   const connectBtn = document.getElementById("connect");
   const disconnectBtn = document.getElementById("disconnect");
+  const ledTestBtn = document.getElementById("ledTest");
+  const questionEl = document.getElementById("question");
   const lastStatus = {};
   let dropped = 0;
   let source = null;
@@ -108,6 +123,27 @@
     try { handleMessage(JSON.parse(line)); } catch { dropped++; }
   }
 
+  async function send(obj) {
+    try {
+      const r = await fetch("/command", { method: "POST", body: JSON.stringify(obj) });
+      if (!r.ok) addLog("Command failed (" + r.status + ")");
+    } catch (e) { addLog("Command failed: " + e.message); }
+  }
+
+  ledTestBtn.addEventListener("click", () => {
+    send({ v: 1, type: "action", id: "led_onboard", name: "test" });
+    addLog("Asked robot to blink the LED");
+    questionEl.style.display = "block";
+  });
+  document.getElementById("yes").addEventListener("click", () => {
+    send({ v: 1, type: "manual_result", id: "led_onboard", pass: true });
+    questionEl.style.display = "none";
+  });
+  document.getElementById("no").addEventListener("click", () => {
+    send({ v: 1, type: "manual_result", id: "led_onboard", pass: false });
+    questionEl.style.display = "none";
+  });
+
   function connect() {
     if (source) return;
     source = new EventSource("/events");
@@ -115,6 +151,7 @@
       stateEl.textContent = "Connected";
       connectBtn.disabled = true;
       disconnectBtn.disabled = false;
+      ledTestBtn.disabled = false;
       addLog("Connected to bridge");
     };
     source.onmessage = (e) => handleLine(JSON.parse(e.data));
@@ -128,6 +165,8 @@
     stateEl.textContent = "Disconnected";
     connectBtn.disabled = false;
     disconnectBtn.disabled = true;
+    ledTestBtn.disabled = true;
+    questionEl.style.display = "none";
   }
 
   connectBtn.addEventListener("click", connect);
