@@ -6,114 +6,290 @@
 <title>Robot Doctor</title>
 <style>
   :root {
-    --bg: #f6f7f9; --card: #ffffff; --text: #1b1f24; --muted: #6b7280; --border: #dfe3e8;
-    --ok: #16a34a; --fault: #dc2626; --warn: #d97706; --unknown: #6b7280;
+    --bg:#f4f6f9; --surface:#ffffff; --text:#151a21; --muted:#667085; --border:#e3e7ee;
+    --good:#16a34a; --bad:#dc2626; --warn:#d97706; --idle:#7b8794; --accent:#2563eb;
+    --good-bg:#e8f6ee; --bad-bg:#fdeaea; --warn-bg:#fdf1e0; --idle-bg:#eef0f3;
+    --shadow:0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.08);
   }
   @media (prefers-color-scheme: dark) {
-    :root { --bg: #14171a; --card: #1e2227; --text: #e6e8eb; --muted: #9aa3ad; --border: #2e353c; }
+    :root {
+      --bg:#0e1116; --surface:#171b22; --text:#e8ebf0; --muted:#98a2b3; --border:#262c36;
+      --good:#34d27b; --bad:#f87171; --warn:#fbbf24; --idle:#8b95a5; --accent:#6ea0ff;
+      --good-bg:#12281d; --bad-bg:#2d1616; --warn-bg:#2d2412; --idle-bg:#222832;
+      --shadow:none;
+    }
   }
-  * { box-sizing: border-box; }
-  body { margin: 0; padding: 20px; background: var(--bg); color: var(--text);
-         font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
-  h1 { font-size: 20px; margin: 0 0 4px; }
-  .sub { color: var(--muted); font-size: 14px; margin-bottom: 16px; }
-  button { font: inherit; padding: 8px 16px; border-radius: 8px; border: 1px solid var(--border);
-           background: var(--card); color: var(--text); cursor: pointer; margin-right: 8px; }
-  button:hover:not(:disabled) { border-color: var(--muted); }
-  button:disabled { opacity: 0.5; cursor: not-allowed; }
-  #state { font-size: 14px; color: var(--muted); }
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin: 20px 0; }
-  .grid.stale { opacity: 0.45; }
-  .card { background: var(--card); border: 1px solid var(--border); border-left: 6px solid var(--unknown);
-          border-radius: 10px; padding: 12px 14px; }
-  .card.OK, .card.MANUAL_PASS { border-left-color: var(--ok); }
-  .card.FAULT, .card.MANUAL_FAIL { border-left-color: var(--fault); }
-  .card.NOT_FOUND { border-left-color: var(--warn); }
-  .name { font-weight: 600; }
-  .status { font-size: 13px; margin-top: 4px; font-weight: 600; color: var(--unknown); }
-  .OK .status, .MANUAL_PASS .status { color: var(--ok); }
-  .FAULT .status, .MANUAL_FAIL .status { color: var(--fault); }
-  .NOT_FOUND .status { color: var(--warn); }
-  .detail, .value { font-size: 13px; color: var(--muted); margin-top: 2px; }
-  h2 { font-size: 15px; margin: 24px 0 8px; }
-  .panel { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
-  #question { display: none; margin-top: 10px; }
-  #log { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px;
-         font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; max-height: 260px; overflow-y: auto; }
-  #log div { padding: 2px 0; }
-  .empty { color: var(--muted); }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; line-height:1.4; }
+  .wrap { max-width:1100px; margin:0 auto; padding:20px 16px 48px; }
+  button { font:inherit; font-size:14px; padding:8px 14px; border-radius:10px; border:1px solid var(--border);
+           background:var(--surface); color:var(--text); cursor:pointer; }
+  button:hover:not(:disabled) { border-color:var(--muted); }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
+  svg { display:block; }
+
+  .top { display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between; margin-bottom:20px; }
+  .brand { display:flex; align-items:center; gap:12px; }
+  .logo { width:40px; height:40px; border-radius:12px; background:var(--accent); color:#fff;
+          display:grid; place-items:center; }
+  .logo svg { width:22px; height:22px; }
+  h1 { font-size:18px; margin:0; }
+  #robotLine { margin:0; font-size:13px; color:var(--muted); }
+  .actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .pill { display:inline-flex; align-items:center; gap:7px; font-size:13px; font-weight:600; padding:6px 12px;
+          border-radius:999px; background:var(--idle-bg); color:var(--idle); }
+  .pill i { width:8px; height:8px; border-radius:50%; background:currentColor; }
+  .pill.live { background:var(--good-bg); color:var(--good); }
+  .pill.live i { animation:pulse 1.6s infinite; }
+  .pill.warn { background:var(--warn-bg); color:var(--warn); }
+  @keyframes pulse { 50% { opacity:.3; } }
+
+  .summary { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:24px; }
+  .tile { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:14px 16px;
+          box-shadow:var(--shadow); }
+  .tile b { display:block; font-size:28px; line-height:1.1; }
+  .tile span { font-size:13px; color:var(--muted); }
+  .tile.good b { color:var(--good); } .tile.bad b { color:var(--bad); }
+  .tile.warn b { color:var(--warn); } .tile.idle b { color:var(--idle); }
+
+  .bar { display:flex; align-items:center; justify-content:space-between; margin:8px 0 12px; gap:8px; }
+  h2 { font-size:15px; margin:0; }
+  .seg { display:inline-flex; background:var(--idle-bg); border-radius:10px; padding:3px; }
+  .seg button { border:0; background:transparent; padding:5px 12px; border-radius:8px; font-size:13px; }
+  .seg button.on { background:var(--surface); box-shadow:var(--shadow); font-weight:600; }
+
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:14px; margin-bottom:28px; }
+  .grid.stale { opacity:.5; }
+  .grid[data-filter=problems] .card[data-tone=good],
+  .grid[data-filter=problems] .card[data-tone=idle] { display:none; }
+  .placeholder { grid-column:1/-1; background:var(--surface); border:1px dashed var(--border); border-radius:14px;
+                 padding:32px; text-align:center; color:var(--muted); }
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:14px 16px;
+          box-shadow:var(--shadow); border-top:3px solid var(--idle); }
+  .card[data-tone=good] { border-top-color:var(--good); }
+  .card[data-tone=bad] { border-top-color:var(--bad); }
+  .card[data-tone=warn] { border-top-color:var(--warn); }
+  .row { display:flex; align-items:center; gap:10px; }
+  .ico { width:36px; height:36px; border-radius:10px; display:grid; place-items:center; flex:none;
+         background:var(--idle-bg); color:var(--idle); }
+  .ico svg { width:20px; height:20px; }
+  [data-tone=good] .ico { background:var(--good-bg); color:var(--good); }
+  [data-tone=bad] .ico { background:var(--bad-bg); color:var(--bad); }
+  [data-tone=warn] .ico { background:var(--warn-bg); color:var(--warn); }
+  .meta { flex:1; min-width:0; }
+  .name { font-weight:600; font-size:15px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .detail { font-size:12px; color:var(--muted); min-height:16px; }
+  .badge { font-size:12px; font-weight:600; padding:3px 9px; border-radius:999px; white-space:nowrap;
+           background:var(--idle-bg); color:var(--idle); }
+  [data-tone=good] .badge { background:var(--good-bg); color:var(--good); }
+  [data-tone=bad] .badge { background:var(--bad-bg); color:var(--bad); }
+  [data-tone=warn] .badge { background:var(--warn-bg); color:var(--warn); }
+  .val { font-size:26px; font-weight:700; margin:10px 0 2px; font-variant-numeric:tabular-nums; }
+  .spark { width:100%; height:28px; }
+  .spark polyline { fill:none; stroke:var(--accent); stroke-width:1.6; vector-effect:non-scaling-stroke;
+                    stroke-linejoin:round; stroke-linecap:round; }
+  .act { margin-top:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; font-size:13px; }
+  .act:empty { display:none; }
+  .mini { padding:5px 12px; font-size:13px; }
+  .ask { display:none; align-items:center; gap:6px; }
+  .ask.show { display:inline-flex; }
+
+  .log { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:6px 14px;
+         max-height:280px; overflow-y:auto; box-shadow:var(--shadow); font-size:13px; }
+  .log div { display:flex; gap:10px; align-items:baseline; padding:7px 0; border-bottom:1px solid var(--border); }
+  .log div:last-child { border-bottom:0; }
+  .log time { color:var(--muted); font-variant-numeric:tabular-nums; flex:none; }
+  .log i { width:8px; height:8px; border-radius:50%; flex:none; background:var(--idle); align-self:center; }
+  .log .ok i { background:var(--good); } .log .bad i { background:var(--bad); } .log .warn i { background:var(--warn); }
+  .log .none { color:var(--muted); display:block; padding:14px 0; }
+
+  @media (max-width:640px) { .summary { grid-template-columns:repeat(2,1fr); } }
 </style>
 </head>
 <body>
-  <h1>Robot Doctor</h1>
-  <div class="sub">Reads the ESP32's reports over USB and shows what is healthy.</div>
-  <button id="connect">Connect to robot</button>
-  <button id="disconnect" disabled>Disconnect</button>
-  <span id="state">Not connected</span>
-  <div id="info" class="sub" style="margin-top:12px"></div>
-
-  <div id="cards" class="grid"><div class="empty">No data yet. Click Connect.</div></div>
-
-  <h2>Tests</h2>
-  <div class="panel">
-    <button id="ledTest" disabled>Test onboard LED</button>
-    <div id="question">
-      Did the LED blink?
-      <button id="yes">Yes</button><button id="no">No</button>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h3l3-8 4 16 3-8h7"/></svg></div>
+      <div><h1>Robot Doctor</h1><p id="robotLine">Not connected</p></div>
     </div>
-  </div>
+    <div class="actions">
+      <span id="pill" class="pill"><i></i><span id="pillText">Disconnected</span></span>
+      <button id="connect" class="primary">Connect</button>
+      <button id="disconnect" disabled>Disconnect</button>
+    </div>
+  </header>
 
-  <h2>Event log</h2>
-  <div id="log"><div class="empty">Changes will appear here.</div></div>
+  <section class="summary">
+    <div class="tile good"><b id="nGood">0</b><span>Healthy</span></div>
+    <div class="tile bad"><b id="nBad">0</b><span>Faults</span></div>
+    <div class="tile warn"><b id="nWarn">0</b><span>Not found</span></div>
+    <div class="tile idle"><b id="nIdle">0</b><span>Untested</span></div>
+  </section>
+
+  <div class="bar">
+    <h2>Components</h2>
+    <div class="seg"><button data-f="all" class="on">All</button><button data-f="problems">Problems</button></div>
+  </div>
+  <div id="grid" class="grid" data-filter="all"><div class="placeholder">No data yet. Click Connect to start.</div></div>
+
+  <div class="bar">
+    <h2>Event log</h2>
+    <div><button id="export" class="mini">Export</button> <button id="clear" class="mini">Clear</button></div>
+  </div>
+  <div id="log" class="log"><span class="none">Changes will appear here.</span></div>
+</div>
 
 <script>
-  const cardsEl = document.getElementById("cards");
-  const logEl = document.getElementById("log");
-  const stateEl = document.getElementById("state");
-  const infoEl = document.getElementById("info");
-  const connectBtn = document.getElementById("connect");
-  const disconnectBtn = document.getElementById("disconnect");
-  const ledTestBtn = document.getElementById("ledTest");
-  const questionEl = document.getElementById("question");
-  const lastStatus = {};
-  let dropped = 0;
-  let source = null;
+  const $ = (s) => document.querySelector(s);
+  const svg = (p) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
+  const ICONS = {
+    chip: svg('<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>'),
+    wave: svg('<path d="M2 12h3l3-8 4 16 3-8h7"/>'),
+    bulb: svg('<path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.7.7 1 1.5 1 2.5h6c0-1 .3-1.8 1-2.5A6 6 0 0 0 12 3z"/>'),
+    box:  svg('<rect x="4" y="4" width="16" height="16" rx="3"/>')
+  };
+  const iconFor = (id) => id.includes("i2c") ? ICONS.chip : id.includes("analog") ? ICONS.wave : id.includes("led") ? ICONS.bulb : ICONS.box;
+  const LABEL = { OK:"Healthy", FAULT:"Fault", NOT_FOUND:"Not found", UNKNOWN:"Untested", MANUAL_PASS:"Passed (manual)", MANUAL_FAIL:"Failed (manual)" };
+  const TONE  = { OK:"good", MANUAL_PASS:"good", FAULT:"bad", MANUAL_FAIL:"bad", NOT_FOUND:"warn", UNKNOWN:"idle" };
 
-  function addLog(text) {
-    if (logEl.querySelector(".empty")) logEl.innerHTML = "";
+  const grid = $("#grid"), logEl = $("#log"), pill = $("#pill");
+  const connectBtn = $("#connect"), disconnectBtn = $("#disconnect");
+  const cards = new Map();          // id -> card object
+  const lastStatus = {};            // previous status per id
+  const logEntries = [];            // for export
+  let source = null, lastMsg = 0, lastT = null, resetReason = "", dropped = 0;
+
+  function setPill(kind, text) {
+    pill.className = "pill" + (kind ? " " + kind : "");
+    $("#pillText").textContent = text;
+  }
+
+  function fmtUptime(ms) {
+    const s = Math.floor(ms / 1000), m = Math.floor(s / 60), h = Math.floor(m / 60);
+    return (h ? h + "h " : "") + (m % 60) + "m " + (s % 60) + "s";
+  }
+
+  function updateHeaderLine() {
+    const parts = [];
+    if (lastT !== null) parts.push("Uptime " + fmtUptime(lastT));
+    if (resetReason) parts.push("Last reset: " + resetReason);
+    $("#robotLine").textContent = parts.length ? parts.join(" · ") : "Not connected";
+  }
+
+  function addLog(level, text) {
+    const now = new Date();
+    logEntries.push(now.toLocaleTimeString() + "  " + text);
+    if (logEl.querySelector(".none")) logEl.innerHTML = "";
     const row = document.createElement("div");
-    row.textContent = new Date().toLocaleTimeString() + "  " + text;
+    row.className = level;
+    const dot = document.createElement("i");
+    const time = document.createElement("time"); time.textContent = now.toLocaleTimeString();
+    const msg = document.createElement("span"); msg.textContent = text;
+    row.append(dot, time, msg);
     logEl.prepend(row);
   }
 
-  function renderCards(components) {
-    cardsEl.classList.remove("stale");
-    cardsEl.innerHTML = "";
-    for (const c of components) {
-      const card = document.createElement("div");
-      card.className = "card " + c.status;
-      const name = document.createElement("div"); name.className = "name"; name.textContent = c.id;
-      const st = document.createElement("div"); st.className = "status"; st.textContent = c.status;
-      card.append(name, st);
-      if (c.detail) { const d = document.createElement("div"); d.className = "detail"; d.textContent = c.detail; card.append(d); }
-      if (c.value !== undefined) { const v = document.createElement("div"); v.className = "value"; v.textContent = "value: " + c.value; card.append(v); }
-      cardsEl.append(card);
+  function send(obj) {
+    fetch("/command", { method: "POST", body: JSON.stringify(obj) })
+      .then((r) => { if (!r.ok) addLog("bad", "Command failed (" + r.status + ")"); })
+      .catch((e) => addLog("bad", "Command failed: " + e.message));
+  }
+
+  function makeCard(id) {
+    const el = document.createElement("article");
+    el.className = "card";
+    el.innerHTML =
+      '<div class="row"><div class="ico"></div><div class="meta"><div class="name"></div><div class="detail"></div></div><span class="badge"></span></div>' +
+      '<div class="val"></div>' +
+      '<svg class="spark" viewBox="0 0 100 28" preserveAspectRatio="none"><polyline points=""/></svg>' +
+      '<div class="act"></div>';
+    el.querySelector(".ico").innerHTML = iconFor(id);
+    el.querySelector(".name").textContent = id;
+    const card = {
+      el, hist: [],
+      detail: el.querySelector(".detail"), badge: el.querySelector(".badge"),
+      val: el.querySelector(".val"), spark: el.querySelector(".spark"),
+      poly: el.querySelector("polyline"), act: el.querySelector(".act")
+    };
+    if (id === "led_onboard") {
+      card.act.innerHTML =
+        '<button class="mini run">Run test</button>' +
+        '<span class="ask">Did it blink? <button class="mini yes">Yes</button><button class="mini no">No</button></span>';
+      const ask = card.act.querySelector(".ask");
+      card.act.querySelector(".run").addEventListener("click", () => {
+        send({ v: 1, type: "action", id, name: "test" });
+        addLog("", "Asked robot to blink the LED");
+        ask.classList.add("show");
+      });
+      card.act.querySelector(".yes").addEventListener("click", () => {
+        send({ v: 1, type: "manual_result", id, pass: true }); ask.classList.remove("show");
+      });
+      card.act.querySelector(".no").addEventListener("click", () => {
+        send({ v: 1, type: "manual_result", id, pass: false }); ask.classList.remove("show");
+      });
     }
+    grid.append(el);
+    cards.set(id, card);
+    return card;
+  }
+
+  function drawSpark(card, id) {
+    const h = card.hist;
+    if (h.length < 2) { card.poly.setAttribute("points", ""); return; }
+    const analog = id.includes("analog");
+    let lo = analog ? 0 : Math.min(...h), hi = analog ? 4095 : Math.max(...h);
+    if (hi === lo) hi = lo + 1;
+    card.poly.setAttribute("points", h.map((v, i) =>
+      (i / (h.length - 1) * 100).toFixed(1) + "," + (26 - (v - lo) / (hi - lo) * 24).toFixed(1)).join(" "));
+  }
+
+  function updateCard(c) {
+    const card = cards.get(c.id) || makeCard(c.id);
+    card.el.dataset.tone = TONE[c.status] || "idle";
+    card.badge.textContent = LABEL[c.status] || c.status;
+    card.detail.textContent = c.detail || "";
+    const hasValue = typeof c.value === "number";
+    card.val.style.display = card.spark.style.display = hasValue ? "" : "none";
+    if (hasValue) {
+      card.val.textContent = c.value;
+      card.hist.push(c.value);
+      if (card.hist.length > 40) card.hist.shift();
+      drawSpark(card, c.id);
+    }
+  }
+
+  function updateSummary() {
+    const n = { good: 0, bad: 0, warn: 0, idle: 0 };
+    cards.forEach((card) => { n[card.el.dataset.tone] = (n[card.el.dataset.tone] || 0) + 1; });
+    $("#nGood").textContent = n.good; $("#nBad").textContent = n.bad;
+    $("#nWarn").textContent = n.warn; $("#nIdle").textContent = n.idle;
   }
 
   function handleMessage(m) {
     if (m.v !== 1) { dropped++; return; }
     if (m.type === "boot") {
-      infoEl.textContent = "Robot just started. Reset reason: " + m.reset_reason;
-      addLog("BOOT (" + m.reset_reason + ")");
+      resetReason = m.reset_reason || "";
+      addLog("warn", "Robot started (reset reason: " + resetReason + ")");
+      updateHeaderLine();
     } else if (m.type === "status" && Array.isArray(m.components)) {
-      renderCards(m.components);
+      lastMsg = Date.now(); lastT = m.t;
+      const ph = grid.querySelector(".placeholder"); if (ph) ph.remove();
+      grid.classList.remove("stale");
+      setPill("live", "Live");
       for (const c of m.components) {
-        if (lastStatus[c.id] !== undefined && lastStatus[c.id] !== c.status) {
-          addLog(c.id + ": " + lastStatus[c.id] + " -> " + c.status + (c.detail ? " (" + c.detail + ")" : ""));
+        updateCard(c);
+        const prev = lastStatus[c.id];
+        if (prev !== undefined && prev !== c.status) {
+          const tone = TONE[c.status];
+          addLog(tone === "bad" ? "bad" : tone === "good" ? "ok" : "warn",
+            c.id + ": " + LABEL[prev] + " → " + LABEL[c.status] + (c.detail ? " (" + c.detail + ")" : ""));
         }
         lastStatus[c.id] = c.status;
       }
+      updateSummary(); updateHeaderLine();
     }
   }
 
@@ -123,51 +299,53 @@
     try { handleMessage(JSON.parse(line)); } catch { dropped++; }
   }
 
-  async function send(obj) {
-    try {
-      const r = await fetch("/command", { method: "POST", body: JSON.stringify(obj) });
-      if (!r.ok) addLog("Command failed (" + r.status + ")");
-    } catch (e) { addLog("Command failed: " + e.message); }
-  }
-
-  ledTestBtn.addEventListener("click", () => {
-    send({ v: 1, type: "action", id: "led_onboard", name: "test" });
-    addLog("Asked robot to blink the LED");
-    questionEl.style.display = "block";
-  });
-  document.getElementById("yes").addEventListener("click", () => {
-    send({ v: 1, type: "manual_result", id: "led_onboard", pass: true });
-    questionEl.style.display = "none";
-  });
-  document.getElementById("no").addEventListener("click", () => {
-    send({ v: 1, type: "manual_result", id: "led_onboard", pass: false });
-    questionEl.style.display = "none";
-  });
-
   function connect() {
     if (source) return;
+    setPill("warn", "Connecting…");
     source = new EventSource("/events");
     source.onopen = () => {
-      stateEl.textContent = "Connected";
-      connectBtn.disabled = true;
-      disconnectBtn.disabled = false;
-      ledTestBtn.disabled = false;
-      addLog("Connected to bridge");
+      connectBtn.disabled = true; disconnectBtn.disabled = false;
+      setPill("warn", "Waiting for data…");
+      addLog("", "Connected to bridge");
     };
     source.onmessage = (e) => handleLine(JSON.parse(e.data));
-    source.onerror = () => { addLog("Bridge connection lost"); stop(); };
+    source.onerror = () => { addLog("bad", "Bridge connection lost"); stop(); };
   }
 
   function stop() {
     if (source) source.close();
     source = null;
-    cardsEl.classList.add("stale");
-    stateEl.textContent = "Disconnected";
-    connectBtn.disabled = false;
-    disconnectBtn.disabled = true;
-    ledTestBtn.disabled = true;
-    questionEl.style.display = "none";
+    grid.classList.add("stale");
+    setPill("", "Disconnected");
+    connectBtn.disabled = false; disconnectBtn.disabled = true;
   }
+
+  // Warn if the robot goes quiet while connected
+  setInterval(() => {
+    if (source && lastMsg && Date.now() - lastMsg > 3000) {
+      setPill("warn", "No data");
+      grid.classList.add("stale");
+    }
+  }, 500);
+
+  document.querySelectorAll(".seg button").forEach((b) => b.addEventListener("click", () => {
+    document.querySelectorAll(".seg button").forEach((x) => x.classList.toggle("on", x === b));
+    grid.dataset.filter = b.dataset.f;
+  }));
+
+  $("#clear").addEventListener("click", () => {
+    logEntries.length = 0;
+    logEl.innerHTML = '<span class="none">Changes will appear here.</span>';
+  });
+
+  $("#export").addEventListener("click", () => {
+    const blob = new Blob([logEntries.join("\n") + "\n"], { type: "text/plain" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "robot-doctor-log-" + new Date().toISOString().slice(0, 10) + ".txt";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
 
   connectBtn.addEventListener("click", connect);
   disconnectBtn.addEventListener("click", stop);

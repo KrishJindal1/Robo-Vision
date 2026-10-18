@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Robot Doctor: Setup</title>
+<style>
+  :root { --bg:#f4f6f9; --surface:#fff; --text:#151a21; --muted:#667085; --border:#e3e7ee;
+          --good:#16a34a; --bad:#dc2626; --accent:#2563eb; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#0e1116; --surface:#171b22; --text:#e8ebf0; --muted:#98a2b3; --border:#262c36;
+            --good:#34d27b; --bad:#f87171; --accent:#6ea0ff; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:system-ui,sans-serif; line-height:1.4; }
+  .wrap { max-width:720px; margin:0 auto; padding:20px 16px 48px; }
+  h1 { font-size:18px; margin:0 0 4px; }
+  h2 { font-size:15px; margin:24px 0 8px; }
+  .sub { color:var(--muted); font-size:13px; }
+  .panel { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:14px 16px; }
+  .item { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 0;
+          border-bottom:1px solid var(--border); font-size:14px; }
+  .item:last-child { border-bottom:0; }
+  .item small { color:var(--muted); display:block; }
+  label { display:block; font-size:13px; color:var(--muted); margin:10px 0 4px; }
+  input, select, button { font:inherit; font-size:14px; padding:8px 10px; border-radius:10px;
+                          border:1px solid var(--border); background:var(--surface); color:var(--text); }
+  input, select { width:100%; }
+  button { cursor:pointer; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; margin-top:14px; }
+  #msg { margin-top:12px; font-size:13px; min-height:18px; }
+  #msg.err { color:var(--bad); } #msg.ok { color:var(--good); }
+  a { color:var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Robot setup</h1>
+  <div class="sub"><span id="conn">Connecting…</span> · <a href="dashboard.html">Back to dashboard</a></div>
+
+  <h2>Declared components</h2>
+  <div class="panel" id="list"><div class="sub">Waiting for the robot…</div></div>
+  <div class="sub" style="margin-top:6px">The I2C bus scan (i2c_bus) is always on. Changes are saved on the robot and survive a reboot.</div>
+
+  <h2>Add a component</h2>
+  <div class="panel">
+    <label for="type">Type</label>
+    <select id="type">
+      <option value="i2c">I2C device (IMU, OLED, ...)</option>
+      <option value="analog">Analog sensor / battery</option>
+      <option value="ultrasonic">Ultrasonic sensor</option>
+      <option value="led">LED (checked by you)</option>
+    </select>
+    <label for="id">Name (a-z, 0-9, _)</label>
+    <input id="id" placeholder="for example imu or sonar_front" autocomplete="off">
+    <div id="fields"></div>
+    <button class="primary" id="add">Add component</button>
+    <div id="msg"></div>
+  </div>
+</div>
+
+<script>
+  const $ = (s) => document.querySelector(s);
+  const OUT = [2,4,5,13,14,16,17,18,19,23,25,26,27,32,33];
+  const ADC = [32,33,34,35,36,39];
+  const INP = [4,5,13,14,16,17,18,19,23,25,26,27,32,33,34,35,36,39];
+  const FIELDS = {
+    i2c:        [{ k:"addr", label:"I2C address in hex (for example 0x68)", text:true }],
+    analog:     [{ k:"pin",  label:"Pin (ADC1 only)", opts:ADC }],
+    led:        [{ k:"pin",  label:"Pin", opts:OUT }],
+    ultrasonic: [{ k:"trig", label:"Trig pin", opts:OUT }, { k:"echo", label:"Echo pin", opts:INP }]
+  };
+
+  function say(text, cls) { const m = $("#msg"); m.textContent = text; m.className = cls || ""; }
+
+  function renderFields() {
+    const box = $("#fields");
+    box.innerHTML = "";
+    for (const f of FIELDS[$("#type").value]) {
+      const lab = document.createElement("label"); lab.textContent = f.label;
+      let el;
+      if (f.text) { el = document.createElement("input"); el.placeholder = "0x68"; }
+      else {
+        el = document.createElement("select");
+        for (const p of f.opts) { const o = document.createElement("option"); o.value = p; o.textContent = "GPIO " + p; el.append(o); }
+      }
+      el.dataset.k = f.k;
+      box.append(lab, el);
+    }
+  }
+
+  function send(obj) {
+    fetch("/command", { method:"POST", body:JSON.stringify(obj) })
+      .then((r) => { if (!r.ok) say("Command failed (" + r.status + ")", "err"); })
+      .catch((e) => say("Command failed: " + e.message, "err"));
+  }
+
+  function describe(c) {
+    if (c.type === "i2c") return "I2C device, address 0x" + Number(c.addr).toString(16).toUpperCase().padStart(2, "0");
+    if (c.type === "analog") return "Analog, GPIO " + c.pin;
+    if (c.type === "led") return "LED, GPIO " + c.pin;
+    if (c.type === "ultrasonic") return "Ultrasonic, trig GPIO " + c.trig + ", echo GPIO " + c.echo;
+    return c.type;
+  }
+
+  function renderList(components) {
+    const list = $("#list");
+    list.innerHTML = "";
+    if (!components.length) { list.innerHTML = '<div class="sub">Nothing declared yet.</div>'; return; }
+    for (const c of components) {
+      const row = document.createElement("div"); row.className = "item";
+      const left = document.createElement("div");
+      const name = document.createElement("b"); name.textContent = c.id;
+      const small = document.createElement("small"); small.textContent = describe(c);
+      left.append(name, small);
+      const rm = document.createElement("button"); rm.textContent = "Remove";
+      rm.addEventListener("click", () => send({ v:1, type:"remove", id:c.id }));
+      row.append(left, rm);
+      list.append(row);
+    }
+  }
+
+  $("#add").addEventListener("click", () => {
+    const type = $("#type").value;
+    const comp = { id: $("#id").value.trim(), type };
+    for (const el of $("#fields").querySelectorAll("[data-k]")) {
+      const k = el.dataset.k;
+      comp[k] = k === "addr" ? parseInt(el.value.replace(/^0x/i, ""), 16) : parseInt(el.value, 10);
+    }
+    say("Sending…");
+    send({ v:1, type:"add", comp });
+  });
+
+  $("#type").addEventListener("change", renderFields);
+  renderFields();
+
+  const source = new EventSource("/events");
+  source.onopen = () => { $("#conn").textContent = "Connected"; send({ v:1, type:"get_config" }); };
+  source.onerror = () => { $("#conn").textContent = "Bridge not reachable"; };
+  source.onmessage = (e) => {
+    let m;
+    try { m = JSON.parse(JSON.parse(e.data)); } catch { return; }
+    if (m.v !== 1) return;
+    if (m.type === "config") {
+      renderList(m.components || []);
+      if ($("#msg").textContent === "Sending…") { say("Saved on the robot.", "ok"); $("#id").value = ""; }
+    } else if (m.type === "error") {
+      say(m.message, "err");
+    }
+  };
+</script>
+</body>
+</html>
